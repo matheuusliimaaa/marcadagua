@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marca d'agua</title>
+<style>
+  :root{
+    --bg: #17111d; --bg-2: #221a2c; --paper: #fbf6ee;
+    --amber: #f2b84b; --line: rgba(251,246,238,0.14);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh;
+    background: radial-gradient(circle at 50% 0%, var(--bg-2), var(--bg) 65%);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--paper);
+    display:flex; align-items:center; justify-content:center;
+    padding: 24px;
+  }
+  .card{
+    width:100%; max-width: 520px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 26px;
+  }
+  h1{ font-size:18px; margin:0 0 4px; }
+  .sub{ font-size:13px; color: rgba(251,246,238,0.55); margin:0 0 20px; }
+  #drop{
+    border: 1.5px dashed var(--line);
+    border-radius: 12px;
+    padding: 34px 16px;
+    text-align:center;
+    font-size:14px;
+    color: rgba(251,246,238,0.7);
+    transition: all .15s ease;
+    cursor:pointer;
+  }
+  #drop.ativo{ border-color: var(--amber); background: rgba(242,184,75,0.06); }
+  #lista{ margin-top:16px; font-size:13px; color: rgba(251,246,238,0.75); }
+  #lista div{ padding:4px 0; border-bottom:1px solid var(--line); }
+  button{
+    padding:13px; background: var(--amber); color:#241a08; font-weight:600; font-size:14px;
+    border:none; border-radius:999px; cursor:pointer;
+  }
+  button:disabled{ opacity:0.4; cursor:not-allowed; }
+  #btnGerar{ margin-top:20px; width:100%; }
+  #status{ margin-top:14px; font-size:13px; color: rgba(251,246,238,0.6); text-align:center; }
+  input[type=file]{ display:none; }
+
+  #resultados{ margin-top:22px; display:flex; flex-direction:column; gap:14px; }
+  .resultado{
+    display:flex; gap:12px; align-items:center;
+    border: 1px solid var(--line); border-radius:12px; padding:10px;
+  }
+  .resultado img{ width:64px; height:64px; object-fit:cover; border-radius:8px; flex-shrink:0; }
+  .resultado .info{ flex:1; min-width:0; }
+  .resultado .nome{ font-size:12px; color: rgba(251,246,238,0.7); word-break:break-all; margin-bottom:8px; }
+  .resultado .acoes{ display:flex; gap:8px; }
+  .resultado .acoes button{
+    flex:1; padding:9px; font-size:12px;
+    background: transparent; border:1px solid var(--amber); color: var(--amber);
+  }
+  .resultado .acoes button.copiado{ background: var(--amber); color:#241a08; }
+  .rodape{ margin-top:18px; font-size:11px; color: rgba(251,246,238,0.35); text-align:center; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Marca d'agua</h1>
+    <p class="sub">Arraste, cole (Ctrl+V) ou clique para escolher as fotos.</p>
+    <div id="drop" tabindex="0">Solte, cole ou clique aqui</div>
+    <input type="file" id="arquivo" multiple accept="image/*">
+    <div id="lista"></div>
+    <button id="btnGerar" disabled>Gerar marca d'agua</button>
+    <div id="status"></div>
+    <div id="resultados"></div>
+    <p class="rodape">Tudo acontece no seu navegador. Nenhuma foto e enviada pra fora.</p>
+  </div>
+
+<script>
+  // ======================= CONFIGURACOES =======================
+  var COR_LINHA = '255,255,255';   // cor das linhas finas (R,G,B)
+  var OPACIDADE_LINHA = 55;        // 0 (invisivel) a 255 (solido)
+  var ESPESSURA_LINHA = 1;         // espessura de cada linha, em pixels
+  var ESPACAMENTO_LINHA = 26;      // distancia entre uma linha e outra
+  var ANGULO_LINHA = 45;           // inclinacao das linhas, em graus
+  var LINHAS_CRUZADAS = true;      // true = grade (dois sentidos), false = so um sentido
+  var SUFIXO_ARQUIVO = '-marca';   // adicionado ao nome do arquivo baixado
+  var QUALIDADE_JPG = 0.95;
+  // ===============================================================
+
+  var drop = document.getElementById('drop');
+  var inputArquivo = document.getElementById('arquivo');
+  var lista = document.getElementById('lista');
+  var btnGerar = document.getElementById('btnGerar');
+  var statusEl = document.getElementById('status');
+  var resultadosEl = document.getElementById('resultados');
+  var arquivosSelecionados = [];
+
+  drop.addEventListener('click', function(){ inputArquivo.click(); });
+
+  ['dragenter','dragover'].forEach(function(evento){
+    drop.addEventListener(evento, function(e){
+      e.preventDefault(); drop.classList.add('ativo');
+    });
+  });
+  ['dragleave','drop'].forEach(function(evento){
+    drop.addEventListener(evento, function(e){
+      e.preventDefault(); drop.classList.remove('ativo');
+    });
+  });
+  drop.addEventListener('drop', function(e){
+    adicionarArquivos(e.dataTransfer.files);
+  });
+  inputArquivo.addEventListener('change', function(e){
+    adicionarArquivos(e.target.files);
+    inputArquivo.value = '';
+  });
+
+  document.addEventListener('paste', function(e){
+    var itens = (e.clipboardData || window.clipboardData).items;
+    var imagens = [];
+    for (var i = 0; i < itens.length; i++){
+      if (itens[i].type.indexOf('image') !== -1){
+        var arquivo = itens[i].getAsFile();
+        if (arquivo) imagens.push(arquivo);
+      }
+    }
+    if (imagens.length > 0){
+      adicionarArquivos(imagens);
+    }
+  });
+
+  function adicionarArquivos(arquivos){
+    var novos = Array.from(arquivos).filter(function(a){
+      return a.type.startsWith('image/');
+    });
+    arquivosSelecionados = arquivosSelecionados.concat(novos);
+    renderizarLista();
+  }
+
+  function renderizarLista(){
+    lista.innerHTML = arquivosSelecionados.map(function(a){
+      return '<div>' + (a.name || 'imagem colada') + '</div>';
+    }).join('');
+    btnGerar.disabled = arquivosSelecionados.length === 0;
+  }
+
+  function desenharLinhas(ctx, w, h, anguloGraus){
+    var diagonal = Math.sqrt(w*w + h*h) + 40;
+    ctx.save();
+    ctx.translate(w/2, h/2);
+    ctx.rotate(anguloGraus * Math.PI / 180);
+    ctx.beginPath();
+    for (var y = -diagonal/2; y < diagonal/2; y += ESPACAMENTO_LINHA){
+      ctx.moveTo(-diagonal/2, y);
+      ctx.lineTo(diagonal/2, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function aplicarMarcaDagua(ctx, w, h){
+    ctx.save();
+    ctx.strokeStyle = 'rgba(' + COR_LINHA + ',' + (OPACIDADE_LINHA/255) + ')';
+    ctx.lineWidth = ESPESSURA_LINHA;
+    desenharLinhas(ctx, w, h, ANGULO_LINHA);
+    if (LINHAS_CRUZADAS) desenharLinhas(ctx, w, h, ANGULO_LINHA + 90);
+    ctx.restore();
+  }
+
+  function carregarImagem(arquivo){
+    return new Promise(function(resolve, reject){
+      var img = new Image();
+      var url = URL.createObjectURL(arquivo);
+      img.onload = function(){ URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = function(erro){ URL.revokeObjectURL(url); reject(erro); };
+      img.src = url;
+    });
+  }
+
+  function processarImagem(arquivo){
+    return carregarImagem(arquivo).then(function(img){
+      var canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      aplicarMarcaDagua(ctx, canvas.width, canvas.height);
+      return new Promise(function(resolve){
+        canvas.toBlob(function(blob){ resolve(blob); }, 'image/jpeg', QUALIDADE_JPG);
+      });
+    });
+  }
+
+  function montarNomeSaida(nomeOriginal){
+    var semExtensao = nomeOriginal.replace(/\.[^/.]+$/, '');
+    return semExtensao + SUFIXO_ARQUIVO + '.jpg';
+  }
+
+  async function copiarParaClipboard(blob, botao){
+    try{
+      var bitmap = await createImageBitmap(blob);
+      var canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      canvas.getContext('2d').drawImage(bitmap, 0, 0);
+      var pngBlob = await new Promise(function(resolve){ canvas.toBlob(resolve, 'image/png'); });
+      await navigator.clipboard.write([ new ClipboardItem({ 'image/png': pngBlob }) ]);
+      var textoOriginal = botao.textContent;
+      botao.textContent = 'Copiado ✓';
+      botao.classList.add('copiado');
+      setTimeout(function(){
+        botao.textContent = textoOriginal;
+        botao.classList.remove('copiado');
+      }, 1500);
+    } catch(erro){
+      alert('Nao foi possivel copiar: ' + erro.message);
+    }
+  }
+
+  function baixar(blob, nome){
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = nome;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function adicionarResultado(nome, blob){
+    var linha = document.createElement('div');
+    linha.className = 'resultado';
+
+    var img = document.createElement('img');
+    img.src = URL.createObjectURL(blob);
+
+    var info = document.createElement('div');
+    info.className = 'info';
+
+    var nomeEl = document.createElement('div');
+    nomeEl.className = 'nome';
+    nomeEl.textContent = nome;
+
+    var acoes = document.createElement('div');
+    acoes.className = 'acoes';
+
+    var btnCopiar = document.createElement('button');
+    btnCopiar.textContent = 'Copiar';
+    btnCopiar.addEventListener('click', function(){ copiarParaClipboard(blob, btnCopiar); });
+
+    var btnBaixar = document.createElement('button');
+    btnBaixar.textContent = 'Baixar';
+    btnBaixar.addEventListener('click', function(){ baixar(blob, nome); });
+
+    acoes.appendChild(btnCopiar);
+    acoes.appendChild(btnBaixar);
+    info.appendChild(nomeEl);
+    info.appendChild(acoes);
+    linha.appendChild(img);
+    linha.appendChild(info);
+    resultadosEl.prepend(linha);
+  }
+
+  btnGerar.addEventListener('click', async function(){
+    btnGerar.disabled = true;
+    var pendentes = arquivosSelecionados;
+    arquivosSelecionados = [];
+    renderizarLista();
+
+    var total = pendentes.length;
+    for (var i = 0; i < total; i++){
+      var arquivo = pendentes[i];
+      var nomeOriginal = arquivo.name || ('imagem-colada-' + (i+1) + '.jpg');
+      statusEl.textContent = 'Processando ' + (i+1) + '/' + total + ': ' + nomeOriginal + '...';
+      try{
+        var blob = await processarImagem(arquivo);
+        var nomeSaida = montarNomeSaida(nomeOriginal);
+        adicionarResultado(nomeSaida, blob);
+      } catch(erro){
+        statusEl.textContent = 'Erro em ' + nomeOriginal + ': ' + erro.message;
+      }
+    }
+    statusEl.textContent = 'Pronto! ' + total + ' foto(s) processada(s). Copie ou baixe abaixo.';
+    btnGerar.disabled = arquivosSelecionados.length === 0;
+  });
+</script>
+</body>
+</html>
