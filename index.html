@@ -7,7 +7,7 @@
 <style>
   :root{
     --bg: #17111d; --bg-2: #221a2c; --paper: #fbf6ee;
-    --amber: #f2b84b; --line: rgba(251,246,238,0.14);
+    --amber: #f2b84b; --line: rgba(251,246,238,0.14); --erro: #e0654f;
   }
   *{box-sizing:border-box;}
   body{
@@ -27,6 +27,17 @@
   }
   h1{ font-size:18px; margin:0 0 4px; }
   .sub{ font-size:13px; color: rgba(251,246,238,0.55); margin:0 0 20px; }
+
+  label{ display:block; font-size:12px; color: rgba(251,246,238,0.6); margin-bottom:6px; }
+  #numeroLead{
+    width:100%; padding:11px 12px; border-radius:8px;
+    border:1px solid var(--line); background: rgba(0,0,0,0.25);
+    color: var(--paper); font-size:14px; outline:none;
+    margin-bottom:18px;
+  }
+  #numeroLead:focus{ border-color: var(--amber); }
+  #numeroLead.erro{ border-color: var(--erro); }
+
   #drop{
     border: 1.5px dashed var(--line);
     border-radius: 12px;
@@ -38,15 +49,15 @@
     cursor:pointer;
   }
   #drop.ativo{ border-color: var(--amber); background: rgba(242,184,75,0.06); }
-  #lista{ margin-top:16px; font-size:13px; color: rgba(251,246,238,0.75); }
-  #lista div{ padding:4px 0; border-bottom:1px solid var(--line); }
+  #drop.bloqueado{ opacity:0.5; cursor:not-allowed; }
+
   button{
     padding:13px; background: var(--amber); color:#241a08; font-weight:600; font-size:14px;
     border:none; border-radius:999px; cursor:pointer;
   }
   button:disabled{ opacity:0.4; cursor:not-allowed; }
-  #btnGerar{ margin-top:20px; width:100%; }
-  #status{ margin-top:14px; font-size:13px; color: rgba(251,246,238,0.6); text-align:center; }
+  #status{ margin-top:14px; font-size:13px; color: rgba(251,246,238,0.6); text-align:center; min-height:18px; }
+  #status.erro{ color: var(--erro); }
   input[type=file]{ display:none; }
 
   #resultados{ margin-top:22px; display:flex; flex-direction:column; gap:14px; }
@@ -69,11 +80,13 @@
 <body>
   <div class="card">
     <h1>Marca d'agua</h1>
-    <p class="sub">Arraste, cole (Ctrl+V) ou clique para escolher as fotos.</p>
+    <p class="sub">Insira o numero do lead, depois arraste, cole (Ctrl+V) ou clique para adicionar a foto.</p>
+
+    <label for="numeroLead">Numero do lead (WhatsApp)</label>
+    <input type="text" id="numeroLead" placeholder="Ex: 5582991463995">
+
     <div id="drop" tabindex="0">Solte, cole ou clique aqui</div>
     <input type="file" id="arquivo" multiple accept="image/*">
-    <div id="lista"></div>
-    <button id="btnGerar" disabled>Gerar marca d'agua</button>
     <div id="status"></div>
     <div id="resultados"></div>
     <p class="rodape">Tudo acontece no seu navegador. Nenhuma foto e enviada pra fora.</p>
@@ -87,23 +100,44 @@
   var ESPACAMENTO_LINHA = 26;      // distancia entre uma linha e outra
   var ANGULO_LINHA = 45;           // inclinacao das linhas, em graus
   var LINHAS_CRUZADAS = true;      // true = grade (dois sentidos), false = so um sentido
-  var SUFIXO_ARQUIVO = '-marca';   // adicionado ao nome do arquivo baixado
+  var SUFIXO_LINHAS = '-linhas';   // adicionado ao nome do arquivo com marca d'agua
   var QUALIDADE_JPG = 0.95;
   // ===============================================================
 
+  var numeroInput = document.getElementById('numeroLead');
   var drop = document.getElementById('drop');
   var inputArquivo = document.getElementById('arquivo');
-  var lista = document.getElementById('lista');
-  var btnGerar = document.getElementById('btnGerar');
   var statusEl = document.getElementById('status');
   var resultadosEl = document.getElementById('resultados');
-  var arquivosSelecionados = [];
+  var contadorPorNumero = {};
 
-  drop.addEventListener('click', function(){ inputArquivo.click(); });
+  function numeroAtual(){
+    return numeroInput.value.trim();
+  }
+
+  function numeroSanitizado(){
+    return numeroAtual().replace(/[^0-9a-zA-Z]/g, '');
+  }
+
+  function avisarNumeroFaltando(){
+    statusEl.textContent = 'Adicione o numero do lead antes de colar/adicionar a foto.';
+    statusEl.classList.add('erro');
+    numeroInput.classList.add('erro');
+    numeroInput.focus();
+    setTimeout(function(){
+      numeroInput.classList.remove('erro');
+    }, 1600);
+  }
+
+  drop.addEventListener('click', function(){
+    if (!numeroAtual()){ avisarNumeroFaltando(); return; }
+    inputArquivo.click();
+  });
 
   ['dragenter','dragover'].forEach(function(evento){
     drop.addEventListener(evento, function(e){
-      e.preventDefault(); drop.classList.add('ativo');
+      e.preventDefault();
+      if (numeroAtual()) drop.classList.add('ativo');
     });
   });
   ['dragleave','drop'].forEach(function(evento){
@@ -112,10 +146,11 @@
     });
   });
   drop.addEventListener('drop', function(e){
-    adicionarArquivos(e.dataTransfer.files);
+    if (!numeroAtual()){ avisarNumeroFaltando(); return; }
+    receberArquivos(e.dataTransfer.files);
   });
   inputArquivo.addEventListener('change', function(e){
-    adicionarArquivos(e.target.files);
+    receberArquivos(e.target.files);
     inputArquivo.value = '';
   });
 
@@ -128,24 +163,62 @@
         if (arquivo) imagens.push(arquivo);
       }
     }
-    if (imagens.length > 0){
-      adicionarArquivos(imagens);
+    if (imagens.length === 0) return;
+
+    if (!numeroAtual()){
+      e.preventDefault();
+      avisarNumeroFaltando();
+      return;
     }
+    receberArquivos(imagens);
   });
 
-  function adicionarArquivos(arquivos){
-    var novos = Array.from(arquivos).filter(function(a){
+  function receberArquivos(arquivos){
+    var numero = numeroSanitizado();
+    if (!numero){ avisarNumeroFaltando(); return; }
+    var imagens = Array.from(arquivos).filter(function(a){
       return a.type.startsWith('image/');
     });
-    arquivosSelecionados = arquivosSelecionados.concat(novos);
-    renderizarLista();
+    imagens.forEach(function(arquivo){
+      tratarNovaImagem(arquivo, numero);
+    });
   }
 
-  function renderizarLista(){
-    lista.innerHTML = arquivosSelecionados.map(function(a){
-      return '<div>' + (a.name || 'imagem colada') + '</div>';
-    }).join('');
-    btnGerar.disabled = arquivosSelecionados.length === 0;
+  function extensaoDoArquivo(arquivo){
+    if (arquivo.type === 'image/png') return 'png';
+    if (arquivo.type === 'image/webp') return 'webp';
+    if (arquivo.type === 'image/jpeg') return 'jpg';
+    var nome = arquivo.name || '';
+    var partes = nome.split('.');
+    if (partes.length > 1) return partes.pop().toLowerCase();
+    return 'jpg';
+  }
+
+  function proximoSufixoIndice(numero){
+    contadorPorNumero[numero] = (contadorPorNumero[numero] || 0) + 1;
+    var contador = contadorPorNumero[numero];
+    return contador > 1 ? ('-' + contador) : '';
+  }
+
+  async function tratarNovaImagem(arquivo, numero){
+    var sufixoIndice = proximoSufixoIndice(numero);
+
+    // 1) baixa a foto original (sem marca), nomeada com o numero do lead
+    var extensao = extensaoDoArquivo(arquivo);
+    baixar(arquivo, numero + sufixoIndice + '.' + extensao);
+
+    // 2) gera a versao com linhas automaticamente e deixa disponivel pra copiar/baixar
+    statusEl.classList.remove('erro');
+    statusEl.textContent = 'Gerando marca d\'agua...';
+    try{
+      var blobMarcado = await processarImagem(arquivo);
+      var nomeMarcado = numero + sufixoIndice + SUFIXO_LINHAS + '.jpg';
+      adicionarResultado(nomeMarcado, blobMarcado);
+      statusEl.textContent = 'Pronto! Original baixado e versao com linhas disponivel abaixo.';
+    } catch(erro){
+      statusEl.textContent = 'Erro ao gerar marca d\'agua: ' + erro.message;
+      statusEl.classList.add('erro');
+    }
   }
 
   function desenharLinhas(ctx, w, h, anguloGraus){
@@ -193,11 +266,6 @@
         canvas.toBlob(function(blob){ resolve(blob); }, 'image/jpeg', QUALIDADE_JPG);
       });
     });
-  }
-
-  function montarNomeSaida(nomeOriginal){
-    var semExtensao = nomeOriginal.replace(/\.[^/.]+$/, '');
-    return semExtensao + SUFIXO_ARQUIVO + '.jpg';
   }
 
   async function copiarParaClipboard(blob, botao){
@@ -265,29 +333,6 @@
     linha.appendChild(info);
     resultadosEl.prepend(linha);
   }
-
-  btnGerar.addEventListener('click', async function(){
-    btnGerar.disabled = true;
-    var pendentes = arquivosSelecionados;
-    arquivosSelecionados = [];
-    renderizarLista();
-
-    var total = pendentes.length;
-    for (var i = 0; i < total; i++){
-      var arquivo = pendentes[i];
-      var nomeOriginal = arquivo.name || ('imagem-colada-' + (i+1) + '.jpg');
-      statusEl.textContent = 'Processando ' + (i+1) + '/' + total + ': ' + nomeOriginal + '...';
-      try{
-        var blob = await processarImagem(arquivo);
-        var nomeSaida = montarNomeSaida(nomeOriginal);
-        adicionarResultado(nomeSaida, blob);
-      } catch(erro){
-        statusEl.textContent = 'Erro em ' + nomeOriginal + ': ' + erro.message;
-      }
-    }
-    statusEl.textContent = 'Pronto! ' + total + ' foto(s) processada(s). Copie ou baixe abaixo.';
-    btnGerar.disabled = arquivosSelecionados.length === 0;
-  });
 </script>
 </body>
 </html>
