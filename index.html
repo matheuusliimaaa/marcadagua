@@ -63,6 +63,7 @@
   var QUALIDADE_JPG = 0.95;
   var FPS_VIDEO = 30;
   var BITRATE_VIDEO = 8000000;     // 8 Mbps
+  var BAIXAR_ORIGINAL = false;     // true = baixa o original automaticamente (abre janela de salvar)
   // ===============================================================
 
   var numeroInput = document.getElementById('numeroLead');
@@ -129,7 +130,7 @@
       else if (arquivo.type.startsWith('video/')){
         // vídeos entram numa fila: um por vez
         var sufixo = proximoSufixoIndice(numero);
-        baixar(arquivo, numero + sufixo + '.' + extensaoDoArquivo(arquivo));
+        if (BAIXAR_ORIGINAL) baixar(arquivo, numero + sufixo + '.' + extensaoDoArquivo(arquivo));
         filaVideos = filaVideos.then(function(){ return tratarNovoVideo(arquivo, numero, sufixo); });
       }
     });
@@ -152,13 +153,13 @@
   // ---------------------- IMAGEM ----------------------
   async function tratarNovaImagem(arquivo, numero){
     var sufixo = proximoSufixoIndice(numero);
-    baixar(arquivo, numero + sufixo + '.' + extensaoDoArquivo(arquivo));
+    if (BAIXAR_ORIGINAL) baixar(arquivo, numero + sufixo + '.' + extensaoDoArquivo(arquivo));
     statusEl.classList.remove('erro');
     statusEl.textContent = 'Gerando marca d\'água...';
     try{
       var blob = await processarImagem(arquivo);
       adicionarResultado(numero + sufixo + SUFIXO_LINHAS + '.jpg', blob, false);
-      statusEl.textContent = 'Pronto! Original baixado e versão com linhas disponível abaixo.';
+      statusEl.textContent = 'Pronto! Versão com linhas disponível abaixo.';
     } catch(erro){
       statusEl.textContent = 'Erro ao gerar marca d\'água: ' + erro.message;
       statusEl.classList.add('erro');
@@ -228,7 +229,7 @@
         statusEl.textContent = 'Gerando vídeo com marca d\'água... ' + Math.round(p * 100) + '% (mantenha a aba aberta)';
       });
       adicionarResultado(numero + sufixo + SUFIXO_LINHAS + '.' + r.ext, r.blob, true);
-      statusEl.textContent = 'Pronto! Original baixado e vídeo com linhas disponível abaixo.';
+      statusEl.textContent = 'Pronto! Vídeo com linhas disponível abaixo.';
     } catch(erro){
       statusEl.textContent = 'Erro ao gerar vídeo: ' + erro.message;
       statusEl.classList.add('erro');
@@ -324,6 +325,19 @@
     }
   }
 
+  async function copiarVideo(blob, botao){
+    try{
+      await navigator.clipboard.write([ new ClipboardItem({ [blob.type]: blob }) ]);
+      var txt = botao.textContent;
+      botao.textContent = 'Copiado ✓';
+      botao.classList.add('copiado');
+      setTimeout(function(){ botao.textContent = txt; botao.classList.remove('copiado'); }, 1500);
+    } catch(erro){
+      statusEl.classList.add('erro');
+      statusEl.textContent = 'O navegador não permite copiar vídeo para a área de transferência. Arraste a miniatura do vídeo para a outra aba/conversa.';
+    }
+  }
+
   function baixar(blob, nome){
     var url = URL.createObjectURL(blob);
     var link = document.createElement('a');
@@ -352,10 +366,18 @@
     var acoes = document.createElement('div'); acoes.className = 'acoes';
 
     if (ehVideo){
-      var btnVer = document.createElement('button');
-      btnVer.textContent = 'Ver';
-      btnVer.addEventListener('click', function(){ window.open(midia.src, '_blank'); });
-      acoes.appendChild(btnVer);
+      var btnCopiarVideo = document.createElement('button');
+      btnCopiarVideo.textContent = 'Copiar';
+      btnCopiarVideo.addEventListener('click', function(){ copiarVideo(blob, btnCopiarVideo); });
+      acoes.appendChild(btnCopiarVideo);
+      // permite arrastar a miniatura direto para outra aba/conversa
+      midia.draggable = true;
+      midia.title = 'Arraste para outra aba para anexar o vídeo';
+      midia.addEventListener('dragstart', function(e){
+        e.dataTransfer.effectAllowed = 'copy';
+        try{ e.dataTransfer.items.add(new File([blob], nome, { type: blob.type })); }catch(_){}
+        try{ e.dataTransfer.setData('DownloadURL', blob.type + ':' + nome + ':' + midia.src); }catch(_){}
+      });
     } else {
       var btnCopiar = document.createElement('button');
       btnCopiar.textContent = 'Copiar';
