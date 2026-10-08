@@ -85,7 +85,7 @@
     <label for="numeroLead">Numero do lead (WhatsApp)</label>
     <input type="text" id="numeroLead" placeholder="Ex: 5582991463995">
 
-    <div id="drop" tabindex="0">Solte, cole ou clique aqui</div>
+    <div id="drop" tabindex="0">Solte, cole (Ctrl+V) ou clique aqui para selecionar uma imagem</div>
     <input type="file" id="arquivo" multiple accept="image/*">
     <div id="status"></div>
     <div id="resultados"></div>
@@ -104,8 +104,7 @@
   var QUALIDADE_JPG = 0.95;
 
   // Texto do rodape (aparece so na versao com linhas)
-  var TEXTO_RODAPE = 'La foto gratis está protegida con unas líneas para que no pueda ser compartida. Las fotos del ensayo no tendrán esta protección.
-';
+  var TEXTO_RODAPE = 'La foto gratis está protegida con unas líneas para que no pueda ser compartida. Las fotos del ensayo no tendrán esta protección.';
   var COR_TEXTO_RODAPE = '#000000';          // cor do texto
   var COR_FAIXA_RODAPE = 'rgba(255,255,255,0.92)'; // faixa clara atras do texto (deixa o preto legivel)
   var TAMANHO_TEXTO_RODAPE = 0.034;          // tamanho da fonte em relacao a largura da imagem
@@ -141,6 +140,8 @@
     inputArquivo.click();
   });
 
+  drop.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); drop.click(); } });
+
   ['dragenter','dragover'].forEach(function(evento){
     drop.addEventListener(evento, function(e){
       e.preventDefault();
@@ -162,7 +163,9 @@
   });
 
   document.addEventListener('paste', function(e){
-    var itens = (e.clipboardData || window.clipboardData).items;
+    var clipboard = e.clipboardData || window.clipboardData;
+    if (!clipboard || !clipboard.items) return;
+    var itens = clipboard.items;
     var imagens = [];
     for (var i = 0; i < itens.length; i++){
       if (itens[i].type.indexOf('image') !== -1){
@@ -177,6 +180,7 @@
       avisarNumeroFaltando();
       return;
     }
+    e.preventDefault();
     receberArquivos(imagens);
   });
 
@@ -184,8 +188,9 @@
     var numero = numeroSanitizado();
     if (!numero){ avisarNumeroFaltando(); return; }
     var imagens = Array.from(arquivos).filter(function(a){
-      return a.type.startsWith('image/');
+      return a.type && a.type.startsWith('image/');
     });
+    if (!imagens.length) { statusEl.textContent = 'Nenhuma imagem encontrada. Copie uma imagem ou selecione um arquivo.'; return; }
     imagens.forEach(function(arquivo){
       tratarNovaImagem(arquivo, numero);
     });
@@ -312,8 +317,8 @@
       ctx.drawImage(img, 0, 0);
       aplicarMarcaDagua(ctx, canvas.width, canvas.height);
       desenharRodape(ctx, canvas.width, canvas.height);
-      return new Promise(function(resolve){
-        canvas.toBlob(function(blob){ resolve(blob); }, 'image/jpeg', QUALIDADE_JPG);
+      return new Promise(function(resolve, reject){
+        canvas.toBlob(function(blob){ if (blob) resolve(blob); else reject(new Error('Falha ao converter a imagem')); }, 'image/jpeg', QUALIDADE_JPG);
       });
     });
   }
@@ -347,7 +352,7 @@
     document.body.appendChild(link);
     link.click();
     link.remove();
-    URL.revokeObjectURL(url);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
   }
 
   function adicionarResultado(nome, blob){
