@@ -102,6 +102,12 @@
   var LINHAS_CRUZADAS = true;      // true = grade (dois sentidos), false = so um sentido
   var SUFIXO_LINHAS = '-linhas';   // adicionado ao nome do arquivo com marca d'agua
   var QUALIDADE_JPG = 0.95;
+
+  // Texto do rodape (aparece so na versao com linhas)
+  var TEXTO_RODAPE = 'A imagem grátis é protegida por listras, ela é feia para mostrar a qualidade e segurança do trabalho';
+  var COR_TEXTO_RODAPE = '#000000';          // cor do texto
+  var COR_FAIXA_RODAPE = 'rgba(255,255,255,0.92)'; // faixa clara atras do texto (deixa o preto legivel)
+  var TAMANHO_TEXTO_RODAPE = 0.034;          // tamanho da fonte em relacao a largura da imagem
   // ===============================================================
 
   var numeroInput = document.getElementById('numeroLead');
@@ -244,6 +250,48 @@
     ctx.restore();
   }
 
+  function quebrarTexto(ctx, texto, larguraMaxima){
+    var palavras = texto.split(' ');
+    var linhas = [];
+    var atual = '';
+    palavras.forEach(function(palavra){
+      var teste = atual ? (atual + ' ' + palavra) : palavra;
+      if (ctx.measureText(teste).width <= larguraMaxima || !atual){
+        atual = teste;
+      } else {
+        linhas.push(atual);
+        atual = palavra;
+      }
+    });
+    if (atual) linhas.push(atual);
+    return linhas;
+  }
+
+  function desenharRodape(ctx, w, h){
+    if (!TEXTO_RODAPE) return;
+    var tamanho = Math.max(12, Math.round(w * TAMANHO_TEXTO_RODAPE));
+    var margem = Math.round(tamanho * 0.8);
+    var alturaLinha = Math.round(tamanho * 1.3);
+
+    ctx.save();
+    ctx.font = 'bold ' + tamanho + 'px Arial, Helvetica, sans-serif';
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'center';
+
+    var linhas = quebrarTexto(ctx, TEXTO_RODAPE, w - margem * 2);
+    var alturaFaixa = linhas.length * alturaLinha + margem * 2 - (alturaLinha - tamanho);
+    var topoFaixa = h - alturaFaixa;
+
+    ctx.fillStyle = COR_FAIXA_RODAPE;
+    ctx.fillRect(0, topoFaixa, w, alturaFaixa);
+
+    ctx.fillStyle = COR_TEXTO_RODAPE;
+    linhas.forEach(function(linha, i){
+      ctx.fillText(linha, w / 2, topoFaixa + margem + i * alturaLinha);
+    });
+    ctx.restore();
+  }
+
   function carregarImagem(arquivo){
     return new Promise(function(resolve, reject){
       var img = new Image();
@@ -262,6 +310,7 @@
       var ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0);
       aplicarMarcaDagua(ctx, canvas.width, canvas.height);
+      desenharRodape(ctx, canvas.width, canvas.height);
       return new Promise(function(resolve){
         canvas.toBlob(function(blob){ resolve(blob); }, 'image/jpeg', QUALIDADE_JPG);
       });
