@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Marca d'agua</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chewy&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg: #17111d; --bg-2: #221a2c; --paper: #fbf6ee;
@@ -102,6 +105,15 @@
   var LINHAS_CRUZADAS = true;      // true = grade (dois sentidos), false = so um sentido
   var SUFIXO_LINHAS = '-linhas';   // adicionado ao nome do arquivo com marca d'agua
   var QUALIDADE_JPG = 0.95;
+
+  // Legenda do rodape (aparece so na versao com linhas)
+  var TEXTO_RODAPE = 'Imagen protegida con rayas para no ser divulgada en las redes sociales';
+  var FONTE_RODAPE = 'Chewy';                // fonte arredondada (Google Fonts)
+  var COR_TEXTO_RODAPE = '#2b3445';          // cinza-azulado escuro: neutro, combina com tema azul ou rosa
+  var COR_CONTORNO_RODAPE = '#ffffff';       // contorno grosso que garante a leitura sobre qualquer foto
+  var TAMANHO_TEXTO_RODAPE = 0.052;          // tamanho da fonte em relacao a largura da imagem
+  var MARGEM_RODAPE = 0.012;                 // distancia da borda de baixo (em relacao a largura): menor = mais rente
+  var ESTRELAS_RODAPE = true;                // pequenas estrelinhas decorativas nas laterais do texto
   // ===============================================================
 
   var numeroInput = document.getElementById('numeroLead');
@@ -244,6 +256,112 @@
     ctx.restore();
   }
 
+  function quebrarTexto(ctx, texto, larguraMaxima){
+    var palavras = texto.split(' ');
+    var linhas = [];
+    var atual = '';
+    palavras.forEach(function(palavra){
+      var teste = atual ? (atual + ' ' + palavra) : palavra;
+      if (ctx.measureText(teste).width <= larguraMaxima || !atual){
+        atual = teste;
+      } else {
+        linhas.push(atual);
+        atual = palavra;
+      }
+    });
+    if (atual) linhas.push(atual);
+    return linhas;
+  }
+
+  // quebra o texto no menor numero de linhas e depois equilibra o tamanho delas
+  function quebrarEquilibrado(ctx, texto, larguraMaxima){
+    var linhas = quebrarTexto(ctx, texto, larguraMaxima);
+    var n = linhas.length;
+    if (n <= 1) return linhas;
+    var baixo = 0, alto = larguraMaxima;
+    for (var i = 0; i < 14; i++){
+      var meio = (baixo + alto) / 2;
+      if (quebrarTexto(ctx, texto, meio).length <= n) alto = meio; else baixo = meio;
+    }
+    return quebrarTexto(ctx, texto, alto);
+  }
+
+  // estrela de 4 pontas (brilho), com contorno branco e preenchimento escuro
+  function desenharEstrela(ctx, cx, cy, raio, larguraContorno){
+    var interno = raio * 0.38;
+    ctx.beginPath();
+    for (var i = 0; i < 8; i++){
+      var r = (i % 2 === 0) ? raio : interno;
+      var ang = (Math.PI / 4) * i - Math.PI / 2;
+      var x = cx + Math.cos(ang) * r;
+      var y = cy + Math.sin(ang) * r;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = larguraContorno;
+    ctx.strokeStyle = COR_CONTORNO_RODAPE;
+    ctx.stroke();
+    ctx.fillStyle = COR_TEXTO_RODAPE;
+    ctx.fill();
+  }
+
+  function desenharRodape(ctx, w, h){
+    if (!TEXTO_RODAPE) return;
+    var tamanho = Math.max(14, Math.round(w * TAMANHO_TEXTO_RODAPE));
+    var contorno = Math.max(4, Math.round(tamanho * 0.34));
+    var alturaLinha = Math.round(tamanho * 1.12);
+    var margemBaixo = Math.round(w * MARGEM_RODAPE) + Math.round(contorno / 2);
+
+    ctx.save();
+    ctx.font = tamanho + 'px "' + FONTE_RODAPE + '", "Arial Rounded MT Bold", "Comic Sans MS", Arial, sans-serif';
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'center';
+    ctx.lineJoin = 'round';
+
+    var larguraMax = w * 0.86;
+    var linhas = quebrarEquilibrado(ctx, TEXTO_RODAPE, larguraMax);
+    var xCentro = w / 2;
+    // base da ultima linha fica rente ao rodape
+    var baseUltima = h - margemBaixo - Math.round(tamanho * 0.22);
+    var basePrimeira = baseUltima - (linhas.length - 1) * alturaLinha;
+
+    // 1a passada: contorno branco grosso com sombra suave (efeito "adesivo")
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = Math.round(tamanho * 0.28);
+    ctx.shadowOffsetY = Math.round(tamanho * 0.05);
+    ctx.lineWidth = contorno;
+    ctx.strokeStyle = COR_CONTORNO_RODAPE;
+    linhas.forEach(function(linha, i){
+      ctx.strokeText(linha, xCentro, basePrimeira + i * alturaLinha);
+    });
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+
+    // 2a passada: preenchimento
+    ctx.fillStyle = COR_TEXTO_RODAPE;
+    linhas.forEach(function(linha, i){
+      ctx.fillText(linha, xCentro, basePrimeira + i * alturaLinha);
+    });
+
+    // estrelinhas nas laterais da ultima linha
+    if (ESTRELAS_RODAPE){
+      var larguraUltima = ctx.measureText(linhas[linhas.length - 1]).width;
+      var raio = tamanho * 0.34;
+      var yEstrela = baseUltima - tamanho * 0.32;
+      var folga = tamanho * 0.75;
+      desenharEstrela(ctx, xCentro - larguraUltima / 2 - folga, yEstrela, raio, contorno * 0.7);
+      desenharEstrela(ctx, xCentro + larguraUltima / 2 + folga, yEstrela, raio, contorno * 0.7);
+    }
+    ctx.restore();
+  }
+
+  function carregarFonteRodape(){
+    if (!document.fonts || !document.fonts.load) return Promise.resolve();
+    return document.fonts.load('40px "' + FONTE_RODAPE + '"').catch(function(){});
+  }
+
   function carregarImagem(arquivo){
     return new Promise(function(resolve, reject){
       var img = new Image();
@@ -255,13 +373,15 @@
   }
 
   function processarImagem(arquivo){
-    return carregarImagem(arquivo).then(function(img){
+    return Promise.all([carregarImagem(arquivo), carregarFonteRodape()]).then(function(res){
+      var img = res[0];
       var canvas = document.createElement('canvas');
       canvas.width = img.naturalWidth;
       canvas.height = img.naturalHeight;
       var ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0);
       aplicarMarcaDagua(ctx, canvas.width, canvas.height);
+      desenharRodape(ctx, canvas.width, canvas.height);
       return new Promise(function(resolve){
         canvas.toBlob(function(blob){ resolve(blob); }, 'image/jpeg', QUALIDADE_JPG);
       });
